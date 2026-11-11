@@ -7,9 +7,9 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background-color: #090d16;
+            background-color: #0f172a;
             color: #00f0ff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: Arial, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -17,15 +17,13 @@
             min-height: 100vh;
             padding: 20px;
         }
-        h1 { margin-bottom: 10px; font-size: 28px; text-shadow: 0 0 10px #00f0ff; }
+        h1 { margin-bottom: 10px; font-size: 26px; }
         #game-container {
             position: relative;
             border: 3px solid #00f0ff;
-            box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
-            border-radius: 8px;
-            overflow: hidden;
+            border-radius: 6px;
         }
-        canvas { display: block; background: #0f172a; }
+        canvas { display: block; background: #1e293b; }
         #hud {
             position: absolute;
             top: 10px;
@@ -33,31 +31,17 @@
             right: 10px;
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            background: rgba(15, 23, 42, 0.85);
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: 1px solid rgba(0, 240, 255, 0.3);
+            background: rgba(15, 23, 42, 0.8);
+            padding: 8px 15px;
+            border-radius: 4px;
             font-weight: bold;
             font-size: 14px;
         }
         .controls-hint {
-            margin-top: 12px;
+            margin-top: 10px;
             font-size: 13px;
             color: #94a3b8;
-            text-align: center;
         }
-        button {
-            background: #00f0ff;
-            color: #090d16;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        button:hover { background: #38bdf8; transform: scale(1.05); }
     </style>
 </head>
 <body>
@@ -68,91 +52,42 @@
         <div id="hud">
             <div>LEVEL: <span id="lvl-display" style="color: #facc15;">1</span></div>
             <div>SCORE: <span id="score-display" style="color: #4ade80;">0</span></div>
-            <div>P1 LIVES: <span id="lives-display" style="color: #f87171;">3</span></div>
-            <div id="p2-hud" style="display: none;">P2 LIVES: <span id="p2-lives-display" style="color: #a78bfa;">3</span></div>
-            <button id="p2-toggle" onclick="togglePlayer2()">Enable 2P Mode</button>
+            <div>LIVES: <span id="lives-display" style="color: #f87171;">3</span></div>
         </div>
         <canvas id="gameCanvas" width="800" height="500"></canvas>
     </div>
 
     <div class="controls-hint">
-        <b>Player 1 Controls:</b> WASD or Arrow Keys | <b>Player 2 Controls (if active):</b> IJKL Keys<br>
-        Collect Orbs to open the Exit Portal. Avoid Spikes, Moving Lasers & Boss Drones!
+        Use WASD or Arrow Keys to move. Collect all Orbs to open the Portal!
     </div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Sound Synthesizer via Web Audio API
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-function playSound(type) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    const now = audioCtx.currentTime;
-
-    if (type === 'pickup') {
-        osc.frequency.setValueAtTime(587.33, now);
-        osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
-        gain.gain.setValueAtTime(0.15, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-        osc.start(now); osc.stop(now + 0.15);
-    } else if (type === 'hit') {
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(220, now);
-        osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
-        gain.gain.setValueAtTime(0.2, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-        osc.start(now); osc.stop(now + 0.2);
-    } else if (type === 'win') {
-        osc.frequency.setValueAtTime(523.25, now);
-        osc.frequency.setValueAtTime(659.25, now + 0.1);
-        osc.frequency.setValueAtTime(783.99, now + 0.2);
-        gain.gain.setValueAtTime(0.2, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-        osc.start(now); osc.stop(now + 0.35);
-    }
-}
-
-// Game State
 let currentLevel = 1;
 let score = 0;
-let isTwoPlayer = false;
+let lives = 3;
 let keys = {};
 
-// Players
-let p1 = { x: 50, y: 50, size: 24, speed: 4, lives: 3, color: '#00f0ff' };
-let p2 = { x: 50, y: 90, size: 24, speed: 4, lives: 3, color: '#a78bfa', active: false };
+// Player Object
+let player = { x: 50, y: 50, size: 24, speed: 4, color: '#00f0ff' };
 
-// Level Configurations
+// Level Elements
 let orbs = [];
 let hazards = [];
 let lasers = [];
-let boss = { x: 700, y: 400, size: 36, speed: 1.8, active: false };
 let portal = { x: 720, y: 420, size: 40, active: false };
-
-function togglePlayer2() {
-    isTwoPlayer = !isTwoPlayer;
-    p2.active = isTwoPlayer;
-    document.getElementById('p2-hud').style.display = isTwoPlayer ? 'block' : 'none';
-    document.getElementById('p2-toggle').innerText = isTwoPlayer ? 'Disable 2P Mode' : 'Enable 2P Mode';
-    resetLevel();
-}
 
 function initLevel(lvl) {
     currentLevel = lvl;
-    p1.x = 50; p1.y = 50;
-    p2.x = 50; p2.y = 90;
+    player.x = 50;
+    player.y = 50;
     portal.active = false;
-    boss.active = (lvl === 3);
 
     document.getElementById('lvl-display').innerText = lvl;
 
     if (lvl === 1) {
-        // Level 1 Setup
         orbs = [
             {x: 200, y: 150, r: 10}, {x: 400, y: 100, r: 10},
             {x: 600, y: 250, r: 10}, {x: 350, y: 380, r: 10}, {x: 500, y: 420, r: 10}
@@ -163,147 +98,123 @@ function initLevel(lvl) {
         ];
         lasers = [];
     } else if (lvl === 2) {
-        // Level 2 Setup
         orbs = [
             {x: 180, y: 120, r: 10}, {x: 380, y: 80, r: 10}, {x: 580, y: 150, r: 10},
-            {x: 250, y: 300, r: 10}, {x: 450, y: 400, r: 10}, {x: 650, y: 380, r: 10}
+            {x: 250, y: 300, r: 10}, {x: 450, y: 400, r: 10}
         ];
         hazards = [{x: 380, y: 220, w: 40, h: 40}];
         lasers = [
             {x: 200, y: 160, w: 120, h: 12, dx: 3},
-            {x: 500, y: 280, w: 140, h: 12, dx: -3.5},
-            {x: 300, y: 400, w: 100, h: 12, dx: 4}
+            {x: 500, y: 280, w: 140, h: 12, dx: -3}
         ];
     } else if (lvl === 3) {
-        // Level 3 Setup
         orbs = [
             {x: 150, y: 150, r: 10}, {x: 300, y: 100, r: 10}, {x: 450, y: 150, r: 10},
-            {x: 600, y: 100, r: 10}, {x: 200, y: 350, r: 10}, {x: 500, y: 350, r: 10}
+            {x: 600, y: 100, r: 10}, {x: 350, y: 350, r: 10}
         ];
-        hazards = [{x: 400, y: 250, w: 50, h: 50}];
-        lasers = [{x: 150, y: 220, w: 500, h: 14, dx: 2}];
-    }
-}
-
-function resetLevel() {
-    if (p1.lives <= 0 || (p2.active && p2.lives <= 0)) {
-        alert("GAME OVER! Resetting from Level 1.");
-        score = 0;
-        p1.lives = 3;
-        p2.lives = 3;
-        initLevel(1);
-    } else {
-        initLevel(currentLevel);
+        hazards = [
+            {x: 400, y: 250, w: 50, h: 50},
+            {x: 200, y: 300, w: 40, h: 40}
+        ];
+        lasers = [
+            {x: 150, y: 200, w: 160, h: 14, dx: 4},
+            {x: 450, y: 320, w: 160, h: 14, dx: -4}
+        ];
     }
     updateHUD();
 }
 
-function updateHUD() {
-    document.getElementById('score-display').innerText = score;
-    document.getElementById('lives-display').innerText = p1.lives;
-    document.getElementById('p2-lives-display').innerText = p2.lives;
+function resetLevel() {
+    if (lives <= 0) {
+        alert("Game Over! Restarting from Level 1.");
+        score = 0;
+        lives = 3;
+        initLevel(1);
+    } else {
+        initLevel(currentLevel);
+    }
 }
 
-// Event Listeners
-window.addEventListener('keydown', e => keys[e.key] = true);
-window.addEventListener('keyup', e => keys[e.key] = false);
+function updateHUD() {
+    document.getElementById('score-display').innerText = score;
+    document.getElementById('lives-display').innerText = lives;
+}
+
+// Input Event Handling
+window.addEventListener('keydown', e => {
+    let key = e.key.toLowerCase();
+    keys[key] = true;
+    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
+        e.preventDefault();
+    }
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
 // Collision Helper
-function checkRectCollision(r1, r2) {
+function checkCollision(r1, r2) {
     return r1.x < r2.x + r2.w && r1.x + r1.size > r2.x &&
            r1.y < r2.y + r2.h && r1.y + r1.size > r2.y;
 }
 
 function update() {
-    // Player 1 Movement
-    if ((keys['w'] || keys['ArrowUp']) && p1.y > 0) p1.y -= p1.speed;
-    if ((keys['s'] || keys['ArrowDown']) && p1.y < canvas.height - p1.size) p1.y += p1.speed;
-    if ((keys['a'] || keys['ArrowLeft']) && p1.x > 0) p1.x -= p1.speed;
-    if ((keys['d'] || keys['ArrowRight']) && p1.x < canvas.width - p1.size) p1.x += p1.speed;
+    // Player Movement
+    if ((keys['w'] || keys['arrowup']) && player.y > 0) player.y -= player.speed;
+    if ((keys['s'] || keys['arrowdown']) && player.y < canvas.height - player.size) player.y += player.speed;
+    if ((keys['a'] || keys['arrowleft']) && player.x > 0) player.x -= player.speed;
+    if ((keys['d'] || keys['arrowright']) && player.x < canvas.width - player.size) player.x += player.speed;
 
-    // Player 2 Movement
-    if (p2.active) {
-        if (keys['i'] && p2.y > 0) p2.y -= p2.speed;
-        if (keys['k'] && p2.y < canvas.height - p2.size) p2.y += p2.speed;
-        if (keys['j'] && p2.x > 0) p2.x -= p2.speed;
-        if (keys['l'] && p2.x < canvas.width - p2.size) p2.x += p2.speed;
-    }
-
-    // Orb Collection
+    // Collect Orbs
     orbs = orbs.filter(orb => {
-        let hitP1 = Math.hypot(p1.x + 12 - orb.x, p1.y + 12 - orb.y) < p1.size/2 + orb.r;
-        let hitP2 = p2.active && Math.hypot(p2.x + 12 - orb.x, p2.y + 12 - orb.y) < p2.size/2 + orb.r;
-        if (hitP1 || hitP2) {
+        let hit = Math.hypot(player.x + 12 - orb.x, player.y + 12 - orb.y) < player.size/2 + orb.r;
+        if (hit) {
             score += 10;
-            playSound('pickup');
             updateHUD();
             return false;
         }
         return true;
     });
 
-    if (orbs.length <= 2) portal.active = true;
+    if (orbs.length === 0) portal.active = true;
 
-    // Hazards Collision
-    let activePlayers = p2.active ? [p1, p2] : [p1];
-    activePlayers.forEach(p => {
-        hazards.forEach(h => {
-            if (checkRectCollision(p, h)) {
-                p.lives--;
-                playSound('hit');
-                resetLevel();
-            }
-        });
-        lasers.forEach(l => {
-            if (checkRectCollision(p, l)) {
-                p.lives--;
-                playSound('hit');
-                resetLevel();
-            }
-        });
-        if (boss.active && checkRectCollision(p, {x: boss.x, y: boss.y, w: boss.size, h: boss.size})) {
-            p.lives--;
-            playSound('hit');
+    // Check Spikes/Hazards
+    for (let h of hazards) {
+        if (checkCollision(player, h)) {
+            lives--;
             resetLevel();
+            return;
         }
-    });
+    }
 
-    // Update Lasers
+    // Check Moving Lasers
+    for (let l of lasers) {
+        if (checkCollision(player, l)) {
+            lives--;
+            resetLevel();
+            return;
+        }
+    }
+
+    // Update Moving Lasers
     lasers.forEach(l => {
         l.x += l.dx;
         if (l.x <= 50 || l.x + l.w >= 750) l.dx *= -1;
     });
 
-    // Update Boss Drone Tracking
-    if (boss.active) {
-        let angle = Math.atan2(p1.y - boss.y, p1.x - boss.x);
-        boss.x += Math.cos(angle) * boss.speed;
-        boss.y += Math.sin(angle) * boss.speed;
-    }
-
-    // Portal Victory Trigger
-    if (portal.active) {
-        if (checkRectCollision(p1, {x: portal.x, y: portal.y, w: portal.size, h: portal.size})) {
-            playSound('win');
-            if (currentLevel < 3) {
-                initLevel(currentLevel + 1);
-            } else {
-                alert("CONGRATULATIONS! You completed Cyber Runner 2050!");
-                currentLevel = 1; score = 0; initLevel(1);
-            }
+    // Check Exit Portal
+    if (portal.active && checkCollision(player, {x: portal.x, y: portal.y, w: portal.size, h: portal.size})) {
+        if (currentLevel < 3) {
+            initLevel(currentLevel + 1);
+        } else {
+            alert("You beat the game!");
+            currentLevel = 1; score = 0; lives = 3; initLevel(1);
         }
     }
 }
 
 function draw() {
-    // Background per Level
+    // Background Color per Level
     ctx.fillStyle = currentLevel === 1 ? '#0f172a' : (currentLevel === 2 ? '#1e1b4b' : '#3f0713');
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.08)';
-    for(let x=0; x<canvas.width; x+=40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
-    for(let y=0; y<canvas.height; y+=40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
 
     // Draw Orbs
     ctx.fillStyle = '#facc15';
@@ -321,26 +232,15 @@ function draw() {
     ctx.fillStyle = '#d946ef';
     lasers.forEach(l => ctx.fillRect(l.x, l.y, l.w, l.h));
 
-    // Draw Boss
-    if (boss.active) {
-        ctx.fillStyle = '#ff0055';
-        ctx.fillRect(boss.x, boss.y, boss.size, boss.size);
-    }
-
-    // Draw Portal
+    // Draw Exit Portal
     if (portal.active) {
         ctx.fillStyle = '#22c55e';
         ctx.fillRect(portal.x, portal.y, portal.size, portal.size);
     }
 
-    // Draw Players
-    ctx.fillStyle = p1.color;
-    ctx.fillRect(p1.x, p1.y, p1.size, p1.size);
-
-    if (p2.active) {
-        ctx.fillStyle = p2.color;
-        ctx.fillRect(p2.x, p2.y, p2.size, p2.size);
-    }
+    // Draw Player
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.size, player.size);
 }
 
 function gameLoop() {
